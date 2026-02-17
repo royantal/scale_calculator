@@ -240,7 +240,7 @@
             var controller = new AbortController();
             var timeoutId = setTimeout(function() { controller.abort(); }, 300000);
 
-            fetch("/search", {
+            fetch("http://localhost:8080/search", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ address: address }),
