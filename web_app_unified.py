@@ -35,11 +35,11 @@ _ssl_ctx.verify_mode = ssl.CERT_NONE
 
 VWORLD_API_KEY = "DB07E3CD-6F12-388C-99D4-6779EA88652F"
 _pnu_cache: Dict[str, Optional[str]] = {}
-DEBUG_MODE = False
+DEBUG_MODE = os.environ.get("DEBUG", "").lower() in ("1", "true", "yes")
 
 def log_debug(msg: str):
-    if DEBUG_MODE:
-        print(f"[DEBUG] {msg}", file=sys.stderr)
+    """디버그 메시지를 stderr에 출력 (항상 출력하여 Render 로그에서 확인 가능)"""
+    print(f"[DEBUG] {msg}", file=sys.stderr)
 
 def geocode_address(address: str) -> Optional[Dict]:
     log_debug(f"1. Geocoding 시작: {address}")
@@ -415,19 +415,23 @@ class Handler(BaseHTTPRequestHandler):
         try:
             _pnu_cache.clear()
             # 방법 2: VWorld API (우선 — 클라우드 환경에서 안정적)
-            result["method2"] = method2_vworld_api(address)
+            try:
+                result["method2"] = method2_vworld_api(address)
+            except Exception as e2:
+                log_debug(f"⚠️ VWorld API 실패: {e2}")
+                result["method2_error"] = str(e2)
             # 방법 1: 토지이음 스크래핑 (보조)
             try:
                 result["method1"] = method1_eum_scraping(address)
-            except Exception:
-                log_debug("⚠️ 토지이음 스크래핑 실패 (무시)")
+            except Exception as e1:
+                log_debug(f"⚠️ 토지이음 스크래핑 실패: {e1}")
+                result["method1_error"] = str(e1)
             # VWorld API 결과 우선, 없으면 토지이음 결과 사용
             result["final"] = result["method2"] or result["method1"]
         except Exception as e:
+            import traceback
+            log_debug(f"❌ 전체 오류: {traceback.format_exc()}")
             result["error"] = str(e)
-            if DEBUG_MODE:
-                import traceback
-                traceback.print_exc(file=sys.stderr)
 
         self._json(200, result)
 
