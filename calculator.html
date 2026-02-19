@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>건축 규모검토</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #6366f1, #9333ea); min-height: 100vh; padding: 24px 16px; }
+        .card { max-width: 600px; margin: 0 auto; background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #6366f1, #9333ea); color: white; padding: 24px; text-align: center; }
+        .header h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+        .header p { font-size: 13px; opacity: 0.8; }
+        .body { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+        .field label { display: block; font-size: 12px; font-weight: 700; color: #555; margin-bottom: 6px; }
+        .field label span { font-weight: 400; color: #16a34a; margin-left: 8px; }
+        .field input, .field select {
+            width: 100%; padding: 10px 12px; border: 2px solid #d1d5db;
+            border-radius: 8px; font-size: 14px; outline: none;
+        }
+        .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+        .btn { flex: 1; padding: 10px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+        .btn-blue { background: #3b82f6; color: white; }
+        .btn-blue:disabled { background: #93c5fd; cursor: not-allowed; }
+        .btn-green { background: #10b981; color: white; }
+        .status { margin-top: 8px; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; }
+        .s-info    { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; }
+        .s-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+        .s-error   { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
+        .s-warn    { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+        .raw-result { margin-top: 6px; padding: 8px 12px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; color: #6b7280; }
+        .raw-result strong { color: #4f46e5; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        const zoneData = {
+            '일반주거지역_2종': { appliedFAR: 2.49 },
+            '일반주거지역_3종': { appliedFAR: 2.99 },
+            '준주거지역':       { appliedFAR: 3.99 },
+            '일반상업지역':     { appliedFAR: 7.99 },
+        };
+
+        const zoneNameToKey = (name) => {
+            if (!name) return null;
+            const map = {
+                '제1종전용주거지역': '일반주거지역_2종',
+                '제2종전용주거지역': '일반주거지역_2종',
+                '제1종일반주거지역': '일반주거지역_2종',
+                '제2종일반주거지역': '일반주거지역_2종',
+                '제3종일반주거지역': '일반주거지역_3종',
+                '준주거지역':       '준주거지역',
+                '중심상업지역':     '일반상업지역',
+                '일반상업지역':     '일반상업지역',
+                '근린상업지역':     '일반상업지역',
+                '유통상업지역':     '일반상업지역',
+            };
+            for (const [k, v] of Object.entries(map)) {
+                if (name.includes(k)) return v;
+            }
+            if (zoneData[name]) return name;
+            return null;
+        };
+
+        function App() {
+            const [location, setLocation]   = useState('서울특별시 성동구 도선동 39-2');
+            const [zoneType, setZoneType]   = useState('일반주거지역_3종');
+            const [landArea, setLandArea]   = useState(2845.3);
+            const [searching, setSearching] = useState(false);
+            const [status, setStatus]       = useState(null);
+            const [rawZone, setRawZone]     = useState('');
+
+            const showStatus = (text, type, ms = 8000) => {
+                setStatus({ text, type });
+                if (ms) setTimeout(() => setStatus(null), ms);
+            };
+
+            const openNaver = () => {
+                if (!location.trim()) return;
+                window.open('https://map.naver.com/p/search/' + encodeURIComponent(location), '_blank');
+            };
+
+            const autoSearch = async () => {
+                const addr = location.trim();
+                if (!addr) { showStatus('주소를 입력해주세요', 'warn'); return; }
+
+                setSearching(true);
+                setRawZone('');
+                showStatus('🔍 용도지역 조회 중...', 'info', 0);
+
+                try {
+                    const res = await fetch('/search', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ address: addr }),
+                    });
+                    if (!res.ok) throw new Error('서버 오류 ' + res.status);
+                    const data = await res.json();
+                    console.log('응답:', data);
+
+                    if (data.final) {
+                        setRawZone(data.final);
+                        const key = zoneNameToKey(data.final);
+                        if (key) {
+                            setZoneType(key);
+                            showStatus('✅ 자동 적용: ' + data.final + ' → ' + key, 'success');
+                        } else {
+                            showStatus('⚠️ 조회됨: ' + data.final + ' — 아래에서 직접 선택하세요', 'warn');
+                        }
+                    } else {
+                        showStatus('❌ 용도지역을 찾을 수 없습니다. 주소를 확인하세요.', 'error');
+                    }
+                } catch (e) {
+                    console.error('오류:', e);
+                    showStatus('❌ 서버 연결 실패 — python3 web_app.py 실행 확인', 'error');
+                } finally {
+                    setSearching(false);
+                }
+            };
+
+            const sc = status ? { info: 's-info', success: 's-success', error: 's-error', warn: 's-warn' }[status.type] : '';
+
+            return (
+                <div className="card">
+                    <div className="header">
+                        <h1>🏗️ 건축 규모검토</h1>
+                        <p>빠른 사업성 판단 도구</p>
+                    </div>
+                    <div className="body">
+
+                        <div className="field">
+                            <label>대지위치</label>
+                            <input
+                                type="text"
+                                value={location}
+                                onChange={e => setLocation(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && autoSearch()}
+                                placeholder="예: 서울특별시 강남구 역삼동 123-45"
+                            />
+                            <div className="btn-row">
+                                <button className="btn btn-blue" onClick={autoSearch} disabled={searching}>
+                                    {searching ? '⏳ 조회 중...' : '🔍 용도지역 자동검색'}
+                                </button>
+                                <button className="btn btn-green" onClick={openNaver}>
+                                    🗺️ 네이버
+                                </button>
+                            </div>
+                            {status && <div className={'status ' + sc}>{status.text}</div>}
+                            {rawZone && (
+                                <div className="raw-result">
+                                    📍 조회된 용도지역: <strong>{rawZone}</strong>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="field">
+                            <label>
+                                용도지역
+                                {rawZone && <span>✨ 자동 설정됨</span>}
+                            </label>
+                            <select value={zoneType} onChange={e => setZoneType(e.target.value)}>
+                                {Object.keys(zoneData).map(k => (
+                                    <option key={k} value={k}>{k}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="field">
+                            <label>대지면적 (㎡)</label>
+                            <input
+                                type="number"
+                                value={landArea}
+                                onChange={e => setLandArea(parseFloat(e.target.value) || 0)}
+                            />
+                        </div>
+
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>

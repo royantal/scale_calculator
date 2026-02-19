@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: land-use-zone-calculator
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: "8080"

@@ -220,6 +220,7 @@ def method1_eum_scraping(address: str) -> Optional[str]:
     try:
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.chrome.service import Service as ChromeService
         from selenium.webdriver.common.by import By
     except ImportError:
         log_debug("❌ selenium 패키지 없음")
@@ -234,10 +235,11 @@ def method1_eum_scraping(address: str) -> Optional[str]:
     log_debug(f"   URL: {url}")
 
     options = Options()
-    options.add_argument("--headless")
+    options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
+    options.add_argument("--disable-software-rasterizer")
     options.add_argument("--window-size=1920,1080")
     options.add_argument(
         "user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -250,7 +252,13 @@ def method1_eum_scraping(address: str) -> Optional[str]:
 
     driver = None
     try:
-        driver = webdriver.Chrome(options=options)
+        # chromedriver 경로가 환경변수로 지정된 경우 Service 사용
+        chromedriver_path = os.environ.get("CHROMEDRIVER_PATH")
+        if chromedriver_path:
+            service = ChromeService(executable_path=chromedriver_path)
+            driver = webdriver.Chrome(service=service, options=options)
+        else:
+            driver = webdriver.Chrome(options=options)
         driver.get(url)
         _time.sleep(5)
 
@@ -406,12 +414,15 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             _pnu_cache.clear()
-            # 방법 1: 토지이음 (우선)
-            result["method1"] = method1_eum_scraping(address)
-            # 방법 2: VWorld API (참고용)
+            # 방법 2: VWorld API (우선 — 클라우드 환경에서 안정적)
             result["method2"] = method2_vworld_api(address)
-            # 토지이음 결과 우선 사용
-            result["final"] = result["method1"] or result["method2"]
+            # 방법 1: 토지이음 스크래핑 (보조)
+            try:
+                result["method1"] = method1_eum_scraping(address)
+            except Exception:
+                log_debug("⚠️ 토지이음 스크래핑 실패 (무시)")
+            # VWorld API 결과 우선, 없으면 토지이음 결과 사용
+            result["final"] = result["method2"] or result["method1"]
         except Exception as e:
             result["error"] = str(e)
             if DEBUG_MODE:
