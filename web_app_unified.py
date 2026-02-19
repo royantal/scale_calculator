@@ -34,6 +34,7 @@ _ssl_ctx.check_hostname = False
 _ssl_ctx.verify_mode = ssl.CERT_NONE
 
 VWORLD_API_KEY = "DB07E3CD-6F12-388C-99D4-6779EA88652F"
+VWORLD_REFERER = os.environ.get("VWORLD_REFERER", "http://localhost")
 _pnu_cache: Dict[str, Optional[str]] = {}
 DEBUG_MODE = os.environ.get("DEBUG", "").lower() in ("1", "true", "yes")
 
@@ -52,6 +53,7 @@ def geocode_address(address: str) -> Optional[Dict]:
     url = f"https://api.vworld.kr/req/address?{params}"
     try:
         req = urllib.request.Request(url)
+        req.add_header("Referer", VWORLD_REFERER)
         with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         status = data.get("response", {}).get("status")
@@ -83,6 +85,7 @@ def get_pnu_from_coord(x: float, y: float) -> Optional[str]:
     url = f"https://api.vworld.kr/req/address?{params}"
     try:
         req = urllib.request.Request(url)
+        req.add_header("Referer", VWORLD_REFERER)
         with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         if data.get("response", {}).get("status") == "OK":
@@ -146,9 +149,10 @@ def method2_vworld_api(address: str) -> Optional[str]:
         "numOfRows": "100", "format": "json",
     })
     url = f"https://api.vworld.kr/ned/data/getLandUseAttr?{params}"
-    
+
     try:
         req = urllib.request.Request(url)
+        req.add_header("Referer", VWORLD_REFERER)
         with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         
