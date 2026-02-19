@@ -30,11 +30,18 @@ from typing import Optional, Dict, Tuple
 import sys
 
 _ssl_ctx = ssl.create_default_context()
-_ssl_ctx.check_hostname = False
-_ssl_ctx.verify_mode = ssl.CERT_NONE
+
+# 해외 서버에서 VWorld API 호출 시 SSL 인증서 검증 실패할 수 있으므로 대비
+try:
+    import certifi
+    _ssl_ctx.load_verify_locations(certifi.where())
+except ImportError:
+    _ssl_ctx.check_hostname = False
+    _ssl_ctx.verify_mode = ssl.CERT_NONE
 
 VWORLD_API_KEY = "DB07E3CD-6F12-388C-99D4-6779EA88652F"
 VWORLD_REFERER = os.environ.get("VWORLD_REFERER", "http://localhost")
+_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 _pnu_cache: Dict[str, Optional[str]] = {}
 DEBUG_MODE = os.environ.get("DEBUG", "").lower() in ("1", "true", "yes")
 
@@ -54,6 +61,7 @@ def geocode_address(address: str) -> Optional[Dict]:
     try:
         req = urllib.request.Request(url)
         req.add_header("Referer", VWORLD_REFERER)
+        req.add_header("User-Agent", _UA)
         with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         status = data.get("response", {}).get("status")
@@ -86,6 +94,7 @@ def get_pnu_from_coord(x: float, y: float) -> Optional[str]:
     try:
         req = urllib.request.Request(url)
         req.add_header("Referer", VWORLD_REFERER)
+        req.add_header("User-Agent", _UA)
         with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         if data.get("response", {}).get("status") == "OK":
@@ -153,9 +162,10 @@ def method2_vworld_api(address: str) -> Optional[str]:
     try:
         req = urllib.request.Request(url)
         req.add_header("Referer", VWORLD_REFERER)
+        req.add_header("User-Agent", _UA)
         with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-        
+
         land_uses = data.get("landUses", {})
         result_code = land_uses.get("resultCode", "")
         
@@ -383,6 +393,7 @@ class Handler(BaseHTTPRequestHandler):
             out["api_url"] = url[:200]
             req = urllib.request.Request(url)
             req.add_header("Referer", VWORLD_REFERER)
+            req.add_header("User-Agent", _UA)
             with urllib.request.urlopen(req, timeout=15, context=_ssl_ctx) as resp:
                 raw = resp.read().decode("utf-8")
             out["raw_response"] = raw[:1000]
