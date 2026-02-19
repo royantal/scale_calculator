@@ -356,8 +356,41 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(204)
             self.send_header("Content-Length", "0")
             self.end_headers()
+        elif p == "/debug":
+            self._handle_debug()
         else:
             self._html("<meta charset=UTF-8><h2>404</h2><p><a href='/'>계산기</a></p>", 404)
+
+    def _handle_debug(self):
+        """VWorld API 디버그 — /debug?address=서울시+강남구+역삼동+812-13"""
+        from urllib.parse import urlparse, parse_qs as qparse
+        qs = qparse(urlparse(self.path).query)
+        address = qs.get("address", ["서울특별시 강남구 역삼동 812-13"])[0]
+        out = {"address": address, "steps": []}
+        try:
+            out["steps"].append("1. geocode_address 호출")
+            geo = geocode_address(address)
+            out["geocode"] = str(geo)[:500] if geo else "None"
+            if geo:
+                point = geo.get("result", {}).get("point", {})
+                x, y = point.get("x"), point.get("y")
+                out["coord"] = {"x": x, "y": y}
+                out["steps"].append("2. get_pnu_from_coord 호출")
+                pnu = get_pnu_from_coord(float(x), float(y)) if x and y else None
+                out["pnu"] = pnu
+                if pnu:
+                    out["steps"].append("3. method2_vworld_api 호출")
+                    zone = method2_vworld_api(address)
+                    out["method2_result"] = zone
+                else:
+                    out["steps"].append("PNU 생성 실패")
+            else:
+                out["steps"].append("Geocoding 실패")
+        except Exception as e:
+            import traceback
+            out["error"] = str(e)
+            out["traceback"] = traceback.format_exc()
+        self._json(200, out)
 
     def do_OPTIONS(self):
         self.send_response(200)
