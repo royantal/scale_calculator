@@ -366,30 +366,48 @@ class Handler(BaseHTTPRequestHandler):
         from urllib.parse import urlparse, parse_qs as qparse
         qs = qparse(urlparse(self.path).query)
         address = qs.get("address", ["서울특별시 강남구 역삼동 812-13"])[0]
-        out = {"address": address, "steps": []}
+        out = {"address": address, "steps": [], "env": {
+            "VWORLD_REFERER": VWORLD_REFERER,
+            "CHROME_BIN": os.environ.get("CHROME_BIN", "(미설정)"),
+        }}
+        # 1단계: VWorld API 직접 raw 호출 테스트
         try:
-            out["steps"].append("1. geocode_address 호출")
-            geo = geocode_address(address)
-            out["geocode"] = str(geo)[:500] if geo else "None"
-            if geo:
-                point = geo.get("result", {}).get("point", {})
-                x, y = point.get("x"), point.get("y")
-                out["coord"] = {"x": x, "y": y}
-                out["steps"].append("2. get_pnu_from_coord 호출")
-                pnu = get_pnu_from_coord(float(x), float(y)) if x and y else None
-                out["pnu"] = pnu
-                if pnu:
-                    out["steps"].append("3. method2_vworld_api 호출")
-                    zone = method2_vworld_api(address)
-                    out["method2_result"] = zone
-                else:
-                    out["steps"].append("PNU 생성 실패")
+            params = urllib.parse.urlencode({
+                "service": "address", "request": "getcoord", "version": "2.0",
+                "crs": "epsg:4326", "address": address, "refine": "true",
+                "simple": "false", "format": "json", "type": "PARCEL",
+                "key": VWORLD_API_KEY,
+            })
+            url = f"https://api.vworld.kr/req/address?{params}"
+            out["steps"].append("1. VWorld Geocoding API 직접 호출")
+            out["api_url"] = url[:200]
+            req = urllib.request.Request(url)
+            req.add_header("Referer", VWORLD_REFERER)
+            with urllib.request.urlopen(req, timeout=15, context=_ssl_ctx) as resp:
+                raw = resp.read().decode("utf-8")
+            out["raw_response"] = raw[:1000]
+            data = json.loads(raw)
+            status = data.get("response", {}).get("status")
+            out["api_status"] = status
+            if status == "OK":
+                result = data["response"].get("result", {})
+                point = result.get("point", {})
+                out["coord"] = {"x": point.get("x"), "y": point.get("y")}
+                out["steps"].append("2. Geocoding 성공")
             else:
-                out["steps"].append("Geocoding 실패")
+                out["steps"].append(f"Geocoding 실패: status={status}")
         except Exception as e:
             import traceback
-            out["error"] = str(e)
-            out["traceback"] = traceback.format_exc()
+            out["api_error"] = str(e)
+            out["api_traceback"] = traceback.format_exc()
+            out["steps"].append(f"API 호출 예외: {e}")
+        # 2단계: geocode_address 함수 호출
+        try:
+            out["steps"].append("3. geocode_address() 함수 호출")
+            geo = geocode_address(address)
+            out["geocode_result"] = str(geo)[:500] if geo else "None"
+        except Exception as e:
+            out["geocode_error"] = str(e)
         self._json(200, out)
 
     def do_OPTIONS(self):
